@@ -25,13 +25,9 @@
  *  International Registered Trademark & Property of PrestaShop SA
  */
 
-
-
 class UploadProducts_csv extends Module
 {
 
-
-	
     public function __construct()
     {
 
@@ -50,12 +46,11 @@ class UploadProducts_csv extends Module
         parent::__construct();
     }
 
- 
     public function install()
     {
 
         if (!parent::install()
-            
+
         ) {
             return false;
         }
@@ -68,7 +63,7 @@ class UploadProducts_csv extends Module
     {
 
         if (!parent::uninstall()
-         
+
         ) {
             return false;
         }
@@ -81,7 +76,6 @@ class UploadProducts_csv extends Module
     {
         $this->_clearCache('*');
     }
-
 
     public function getContent()
     {
@@ -105,8 +99,6 @@ class UploadProducts_csv extends Module
         $helper->title = $this->displayName;
         $helper->submit_action = 'uploadproducts_csv';
 
-        
-
         /**formm array aplicado */
 
         $this->form[0] = array(
@@ -122,9 +114,8 @@ class UploadProducts_csv extends Module
                         'desc' => $this->l('Upload CSV Products File'),
                         'hint' => $this->l('Upload CSV Products File'),
                         'name' => 'upload_file',
-                        'accept' => $this->l('.csv'),
-                        'lang' => false,
-                    )
+                        'lang' => true,
+                    ),
                 ),
 
                 'submit' => array(
@@ -139,68 +130,155 @@ class UploadProducts_csv extends Module
 
     }
 
-
-    
-
     public function postProcess()
     {
 
         if (Tools::isSubmit('uploadproducts_csv')) {
 
 
+            function idProductBrand($BrandName)
+            {
+                if ($id = \Manufacturer::getIdByName($BrandName)) {
+                    return $id;
+                } else {
+                    $db = \Db::getInstance();
+                    $db->insert('manufacturer', array(
+                        'name' => $BrandName,
+                        'date_upd' => date('Y-m-d H:i:s'),
+                    ));
+                    idProductBrand($BrandName);
+                }
+            }
 
-        
 
+            function idProductTax($tax)
+            {
+                $db = \Db::getInstance();
+                $request = "SELECT id_tax "
+                    . "FROM ps_tax "
+                    . "WHERE rate = $tax ";
+                $id_tax = $db->getValue($request);
+                return $id_tax;
+            }
+
+           
+
+            function ProductCategoryName($lang, $name)
+            {
+                $db = \Db::getInstance();
+                $request = "SELECT id_category
+                        FROM ps_category_lang
+                        WHERE  name = '" . $name . "' AND id_lang = " . $lang;
+                $id = $db->executeS($request);
+                return $id;
+            }
+
+            function idProductCategory($name, $lang)
+            {
+                $result = ProductCategoryName(Configuration::get('PS_LANG_DEFAULT'), $name);
+                if ($result) {
+                    return $result[0]['id_category'];
+                } else {
+                    return insertDbCategory(pSQL($name), $lang);
+                }
+            }
 
           
-        if (isset($_POST["upload_file"])) {
-        
-                $csv_file = $_FILES["upload_file"]["tmp_name"];
-        
-                $data = explode("\n", $csv_file);
-                $data = array_filter(array_map("trim", $data));
-                $default_language = Configuration::get('PS_LANG_DEFAULT');
-            
-                $i = 0;
-                foreach ($data as $csv) {
-                        $i++;
-                        if ($i < 2) {continue;}
-            
-                        $csv_values = explode(",", $csv);
-                        $name = $csv_values[0];
-                        $reference = $csv_values[1];
-                        $ean13 = $csv_values[2];
-                        $price = $csv_values[3];
-                        $wholesale_price = $csv_values[4];
-                        $ecotax = $csv_values[5];
-                        $quantity = $csv_values[6];
-                        $category = $csv_values[7];
-                        $manufacturer = $csv_values[8];
-            
-                        $product = new Product();
-            
-                    $product->name = [$default_language => $name];
-                    $product->reference = $reference;
-                    $product->ean13 =$ean13;
-                    $product->price = $price;
-                    $product->wholesale_price = $wholesale_price;
-                    $product->ecotax = $ecotax;
-                    $product->quantity = $quantity;
-                    $product->category = $category;
-            
-                    $product->manufacturer_name = $manufacturer;
-            
-                    $product->add();
-            
-            
-                    } 
+            function insertDbCategory($name, $langs)
+            {
 
-          
+                $newCategory = new \Category();
+                $newCategory->active = 1;
+                foreach ($langs as $language) {
+                    $names[(int) $language] = $name;
+                }
+                $newCategory->name = $names;
+                $newCategory->id_parent = 2;
+                $newCategory->position = 1;
+                $newCategory->description = '';
+                $newCategory->is_root_category = 1;
+                $newCategory->meta_keywords = '';
+                $newCategory->meta_description = '';
+
+                $id = createCategoryDb((int) \Context::getContext()->shop->id);
+
+                $newCategory->id_category = $id;
+                $newCategory->id = $id;
+                $newCategory->update();
+
+                return $id;
+            }
+
+         
+            function createCategoryDb($shopId)
+            {
+                $db = \Db::getInstance();
+
+                $db->insert('category', array(
+                    'id_parent' => 1,
+                    'id_shop_default' => $shopId,
+                    'active' => 1,
+                    'is_root_category' => 1,
+                    'date_add' => date('Y-m-d H:i:s'),
+                ));
+                $id = Db::getInstance()->Insert_ID();
+
+                return $id;
+            }
+
+      
+            $csv = $_FILES['upload_file']['tmp_name'];
+
+            $fp = fopen($csv, "r");
+            while ($data[] = fgetcsv($fp, 1000, ",")) {
+            }
+            fclose($fp);
+            array_pop($data);
+
+            $numProducts = count($data) - 1;
+
+            for ($i = 1; $i <= $numProducts; $i++) {
+
+                foreach ($langs as $lang) {
+                    $names[$lang] = $data[$i][0];
+                }
+                $product = new Product();
+                $product->name = $names;
+                $product->reference = $data[$i][1];
+                $product->ean13 = $data[$i][2];
+                $product->wholesale_price = (float) $data[$i][3];
+                $product->price = (float) $data[$i][4];
+                $product->redirect_type = '301-category';
+                $getProductTaxes = floatval($data[$i][5]);
+                $product->id_tax_rules_group = (int) idProductTax($getProductTaxes);
+                $product->on_sale = 0;
+                $product->id_manufacturer = (int) idProductBrand($data[$i][8]);
+                $product->add();
+                StockAvailable::setQuantity($product->id, $product->id, (int) $data[$i][6]);
+
+                $categories = explode(';', $data[$i][7]);
+                $defaultCategory = 0;
+                $idCategories = [];
+                foreach ($categories as $category) {
+                    $idCategory = idProductCategory(trim($category), $langs);
+                    if ($idCategory) {
+                        if ($defaultCategory == 0) {
+                            $product->id_category_default = $idCategory;
+                        }
+                        $idCategories[] = $idCategory;
+                        $defaultCategory++;
+                    }
+                }
+                if (count($idCategories) > 0) {
+                    $product->addToCategories($idCategories);
+                }
 
             }
 
+
+    
             /**checking csv file for upload csv to upload folder */
-      
+
             $uploads_dir = $this->local_path.'upload/';
             function uploadfile($origin, $dest, $tmp_name)
                 {
@@ -213,27 +291,20 @@ class UploadProducts_csv extends Module
                     $filename = substr($origin, 0, strlen($origin)-strlen($fileext)).'['.$i.']'.$fileext;
                     $fulldest = $dest.$newfilename;
                 }
-                
+
                 if (move_uploaded_file($tmp_name, $fulldest))
                     return $filename;
                 return false;
                 }
-          
+
             uploadfile($_FILES['upload_file']['tmp_name'],$uploads_dir,$_FILES['upload_file']['name']);
 
             /**end upload products csv */
-	
+
             return $this->displayConfirmation($this->l('Upload CSV File Successfully'));
-            
+
         }
 
-
-
-	}
-
-
-   
-	
-   
+    }
 
 }
